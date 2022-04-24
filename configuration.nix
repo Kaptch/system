@@ -11,13 +11,14 @@
     [ v4l2loopback.out ];
 
   boot.loader = { 
-    grub = {
-      enable = true;
-      version = 2;
-      efiSupport = true;
-      enableCryptodisk = true;
-      device = "nodev";
-    };
+    # grub = {
+    #   enable = true;
+    #   version = 2;
+    #   efiSupport = true;
+    #   enableCryptodisk = true;
+    #   device = "nodev";
+    # };
+    systemd-boot.enable = true;
     efi.canTouchEfiVariables = true;
   };  
   
@@ -94,14 +95,17 @@
 
   services.pcscd.enable = true;
 
-  programs = {
-    ssh.startAgent = false;
-    gnupg.agent = {
-      enable = true;
-      enableSSHSupport = true;
-      pinentryFlavor = "curses";
-    };
-  };
+  services.printing.enable = true;
+  services.printing.browsing = true;
+
+  # programs = {
+  #   ssh.startAgent = false;
+  #   gnupg.agent = {
+  #     enable = true;
+  #     enableSSHSupport = true;
+  #     pinentryFlavor = "curses";
+  #   };
+  # };
 
   virtualisation.virtualbox.host.enable = true;
   virtualisation.virtualbox.host.enableExtensionPack = true;
