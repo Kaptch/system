@@ -11,13 +11,6 @@
     [ v4l2loopback.out ];
 
   boot.loader = { 
-    # grub = {
-    #   enable = true;
-    #   version = 2;
-    #   efiSupport = true;
-    #   enableCryptodisk = true;
-    #   device = "nodev";
-    # };
     systemd-boot.enable = true;
     efi.canTouchEfiVariables = true;
   };  
@@ -25,9 +18,6 @@
   boot.kernelModules = [ "v4l2loopback" ];
 
   boot.extraModprobeConfig = ''
-    # exclusive_caps: Skype, Zoom, Teams etc. will only show device when actually streaming
-    # card_label: Name of virtual camera, how it'll show up in Skype, Zoom, Teams
-    # https://github.com/umlaeute/v4l2loopback
     options v4l2loopback exclusive_caps=1 card_label="Virtual Camera"
   '';
 
@@ -35,13 +25,50 @@
     package = pkgs.nixFlakes;
     extraOptions = lib.optionalString (config.nix.package == pkgs.nixFlakes)
       "experimental-features = nix-command flakes";
+    gc = {
+      automatic = true;
+      dates = "weekly";
+      options = "--delete-older-than 30d";
+    };
   };
 
-  networking.hostName = "laptop"; # Define your hostname.
+  fonts.fonts = [ pkgs.font-awesome ];
+
+  networking.hostName = "laptop";
   networking.networkmanager.enable = true;
   networking.useDHCP = false;
   networking.interfaces.enp36s0.useDHCP = true;
   networking.interfaces.wlp0s20f3.useDHCP = true;
+  # networking.resolvconf = {
+  #   enable = true;
+  #   useLocalResolver = true;    
+  # };
+  # networking.dhcpcd.extraConfig = "nohook resolv.conf";
+  # networking.networkmanager.dns = "none";
+  # services.coredns.enable = true;
+  # services.coredns.config =
+  #   ''
+  #   . {
+  #       forward . 1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4
+  #       cache
+  #   }
+  #   local {
+  #     template IN A  {
+  #       answer "{{ .Name }} 0 IN A 127.0.0.1"
+  #     }
+  #   }
+  #   '';
+  networking.firewall = {
+    logReversePathDrops = true;
+    extraCommands = ''
+      ip46tables -t raw -I nixos-fw-rpfilter -p udp -m udp --sport 51820 -j RETURN
+      ip46tables -t raw -I nixos-fw-rpfilter -p udp -m udp --dport 51820 -j RETURN
+    '';
+    extraStopCommands = ''
+      ip46tables -t raw -D nixos-fw-rpfilter -p udp -m udp --sport 51820 -j RETURN || true
+      ip46tables -t raw -D nixos-fw-rpfilter -p udp -m udp --dport 51820 -j RETURN || true
+    '';
+  };
   
   time.timeZone = "Europe/Copenhagen";
 
@@ -64,6 +91,11 @@
 
   hardware.system76.enableAll = true;
 
+  hardware.ledger.enable = true;
+  services.udev.extraRules = ''
+    KERNEL=="hidraw*", SUBSYSTEM=="hidraw", MODE="0660", GROUP="plugdev", ATTRS{idVendor}=="2c97"
+  '';
+
   services.udev.packages = [ pkgs.yubikey-personalization ];
 
   security.rtkit.enable = true;
@@ -81,8 +113,8 @@
       driSupport = true;
       driSupport32Bit = true;
       extraPackages = with pkgs; [
-        intel-media-driver # LIBVA_DRIVER_NAME=iHD
-        vaapiIntel         # LIBVA_DRIVER_NAME=i965 (older but works better for Firefox/Chromium)
+        intel-media-driver
+        vaapiIntel
         vaapiVdpau
         libvdpau-va-gl
       ];
@@ -93,22 +125,26 @@
     text = "auth include login";
   };
 
+  security.pam.yubico = {
+    enable = true;
+    debug = false;
+    mode = "challenge-response";
+  };
+
   services.pcscd.enable = true;
 
   services.printing.enable = true;
   services.printing.browsing = true;
 
-  # programs = {
-  #   ssh.startAgent = false;
-  #   gnupg.agent = {
-  #     enable = true;
-  #     enableSSHSupport = true;
-  #     pinentryFlavor = "curses";
-  #   };
-  # };
-
+  virtualisation.libvirtd.enable = true;
   virtualisation.virtualbox.host.enable = true;
   virtualisation.virtualbox.host.enableExtensionPack = true;
+  virtualisation = {
+    waydroid.enable = true;
+    lxd.enable = true;
+  };
+
+  systemd.services.waydroid-container.enable = true;
 
   environment.systemPackages = with pkgs; [ git ];
 
