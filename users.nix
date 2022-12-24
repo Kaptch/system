@@ -5,6 +5,6 @@
   users.users.kaptch = {
     isNormalUser = true;
     home = "/home/kaptch";
-    extraGroups = [ "wheel" "networkmanager" "audio" "libvirtd" "plugdev" ];
+    extraGroups = [ "wheel" "networkmanager" "audio" "libvirtd" "plugdev" "docker" ];
   };
 }

@@ -1,5 +1,8 @@
 { config, lib, pkgs, modulesPath, inputs, ... }:
-
+let
+  greetd-cfg = config.services.greetd;
+  greetd-tty = "tty${toString greetd-cfg.vt}";
+in
 {
   imports =
     [
@@ -10,11 +13,13 @@
   boot.extraModulePackages = with config.boot.kernelPackages;
     [ v4l2loopback.out ];
 
-  boot.loader = { 
+  boot.loader = {
     systemd-boot.enable = true;
     efi.canTouchEfiVariables = true;
-  };  
-  
+  };
+
+  boot.binfmt.emulatedSystems = [ "aarch64-linux" ];
+
   boot.kernelModules = [ "v4l2loopback" ];
 
   boot.extraModprobeConfig = ''
@@ -22,7 +27,9 @@
   '';
 
   nix = {
+    settings.allowed-users = [ "@wheel" ];
     package = pkgs.nixFlakes;
+    settings.auto-optimise-store = true;
     extraOptions = lib.optionalString (config.nix.package == pkgs.nixFlakes)
       "experimental-features = nix-command flakes";
     gc = {
@@ -41,7 +48,7 @@
   networking.interfaces.wlp0s20f3.useDHCP = true;
   # networking.resolvconf = {
   #   enable = true;
-  #   useLocalResolver = true;    
+  #   useLocalResolver = true;
   # };
   # networking.dhcpcd.extraConfig = "nohook resolv.conf";
   # networking.networkmanager.dns = "none";
@@ -58,16 +65,94 @@
   #     }
   #   }
   #   '';
+  # networking.nftables.enable = false;
+
   networking.firewall = {
+    package = pkgs.iptables-legacy;
     logReversePathDrops = true;
-    extraCommands = ''
-      ip46tables -t raw -I nixos-fw-rpfilter -p udp -m udp --sport 51820 -j RETURN
-      ip46tables -t raw -I nixos-fw-rpfilter -p udp -m udp --dport 51820 -j RETURN
-    '';
-    extraStopCommands = ''
-      ip46tables -t raw -D nixos-fw-rpfilter -p udp -m udp --sport 51820 -j RETURN || true
-      ip46tables -t raw -D nixos-fw-rpfilter -p udp -m udp --dport 51820 -j RETURN || true
-    '';
+    # extraCommands =
+    # ''
+    #   ip46tables -t raw -I nixos-fw-rpfilter -p udp -m udp --sport 51820 -j RETURN
+    #   ip46tables -t raw -I nixos-fw-rpfilter -p udp -m udp --dport 51820 -j RETURN
+    # '';
+    # ''
+    #   ${pkgs.nftables}/bin/nft insert rule ip raw nixos-fw-rpfilter udp sport 51820 counter return
+    #   ${pkgs.nftables}/bin/nft insert rule ip raw nixos-fw-rpfilter udp dport 51820 counter return
+    # '';
+    # extraStopCommands =
+    # ''
+    #   ip46tables -t raw -D nixos-fw-rpfilter -p udp -m udp --sport 51820 -j RETURN || true
+    #   ip46tables -t raw -D nixos-fw-rpfilter -p udp -m udp --dport 51820 -j RETURN || true
+    # '';
+    # ''
+    #   ${pkgs.nftables}/bin/nft insert rule ip raw nixos-fw-rpfilter udp sport 51820 counter return || true
+    #   ${pkgs.nftables}/bin/nft insert rule ip raw nixos-fw-rpfilter udp dport 51820 counter return || true
+    # '';
+  };
+  services.tor = {
+    enable = true;
+    enableGeoIP = false;
+    client.enable = true;
+  };
+
+  services.i2p.enable = true;
+
+  # services.i2pd = {
+  #   enable = true;
+  #   proto.httpProxy.enable = true;
+  # };
+
+  services.udisks2.enable = true;
+
+  containers.punchbox = {
+    autoStart = false;
+    ephemeral = true;
+    extraFlags = [ "-U" ];
+
+    config = { config, pkgs, ... }: {
+      system.stateVersion = "22.05";
+
+	    environment.systemPackages = with pkgs; [ openssh coreutils nftables ];
+
+      users.users.bob = {
+        isNormalUser  = true;
+        password = "alice";
+        shell = "${pkgs.coreutils}/bin/true";
+      };
+
+      services.openssh = {
+        enable = true;
+        ports = [20022];
+        permitRootLogin = "no";
+        passwordAuthentication = true;
+        extraConfig = "
+          AllowUsers bob
+          Match User bob
+            PermitOpen 127.0.0.1:20222
+            X11Forwarding no
+            AllowAgentForwarding no
+            ForceCommand ${pkgs.coreutils}/bin/false
+        ";
+      };
+
+      services.tor = {
+        enable = true;
+	      torsocks.allowInbound = true;
+        enableGeoIP = false;
+        relay.onionServices = {
+          punchbox = {
+            version = 3;
+            map = [{
+              port = 20022;
+              target = {
+                addr = "localhost";
+                port = 20022;
+              };
+            }];
+          };
+        };
+      };
+    };
   };
 
   services.avahi = {
@@ -76,7 +161,36 @@
     ipv4 = true;
     ipv6 = true;
   };
-  
+
+  services.upower = {
+    enable = true;
+  };
+
+  services.logind.extraConfig = ''
+    HandlePowerKey=ignore
+  '';
+
+  services.greetd = {
+    enable = true;
+    settings = {
+      default_session = {
+        command = "${pkgs.greetd.tuigreet}/bin/tuigreet --time --asterisks --cmd sway";
+        user = "kaptch";
+      };
+    };
+  };
+
+  systemd.services.greetd = {
+      unitConfig = {
+        After = [
+          "multi-user.target"
+          "systemd-user-sessions.service"
+          "plymouth-quit-wait.service"
+          "getty@${greetd-tty}.service"
+        ];
+      };
+  };
+
   time.timeZone = "Europe/Copenhagen";
 
   i18n.defaultLocale = "en_US.UTF-8";
@@ -84,10 +198,6 @@
     font = "Lat2-Terminus16";
     keyMap = "us";
   };
-
-  nix = {
-    allowedUsers = [ "@wheel" ];
-  };  
 
   nixpkgs.config.allowUnfree = true;
 
@@ -132,9 +242,9 @@
     };
   };
 
-  security.pam.services.swaylock = {
-    text = "auth include login";
-  };
+  # security.pam.services.swaylock = {
+  #   text = "auth include login";
+  # };
 
   security.pam.yubico = {
     enable = true;
@@ -147,12 +257,15 @@
   services.printing.enable = true;
   services.printing.browsing = true;
 
-  virtualisation.libvirtd.enable = true;
-  virtualisation.virtualbox.host.enable = true;
-  virtualisation.virtualbox.host.enableExtensionPack = true;
   virtualisation = {
+    libvirtd.enable = true;
+    docker.enable = true;
     waydroid.enable = true;
     lxd.enable = true;
+    virtualbox = {
+      host.enable = true;
+      host.enableExtensionPack = true;
+    };
   };
 
   systemd.services.waydroid-container.enable = true;
